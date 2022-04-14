@@ -3,42 +3,7 @@
 #include <QFile>
 #include <QTextCodec>
 #include <QRegExp>
-
-class CTcpDevice
-{
-
-public:
-    CTcpDevice(const QHostAddress& addr)
-    {
-        m_hostAddr = addr;
-        bool res = m_server.listen(m_hostAddr, 4000);
-        if (res)
-            printf("listen success %s\n", m_hostAddr.toString().toLocal8Bit().constData());
-        else
-            printf("listen bad %s\n", m_hostAddr.toString().toLocal8Bit().constData());
-    };
-    const QHostAddress& getIP()
-    {
-        return m_hostAddr;
-    };
-
-    QTcpServer  m_server;
-
-
-private:
-    QHostAddress m_hostAddr;
-};
-
-
-class CMicTM : public CTcpDevice
-{
-public:
-    CMicTM(const QHostAddress& addr):CTcpDevice(addr)
-    {};
-    void addChannel(unsigned int id, QString name)
-    {};
-};
-
+#include "TcpDevice.h"
 
 QVector<CTcpDevice*> G_devices;
 
@@ -51,7 +16,17 @@ CTcpDevice* searchDevByIP(const QHostAddress& addr)
             return tDev;
     }
     return nullptr;
-};
+}
+
+void startListenAll()
+{
+    QVectorIterator<CTcpDevice*> itDevs(G_devices);
+    while (itDevs.hasNext()) {
+        CTcpDevice* tDev = itDevs.next();
+        if (tDev)
+           tDev->startListen();
+    }
+}
 
 int main(int argc, char *argv[])
 {   
@@ -60,14 +35,13 @@ int main(int argc, char *argv[])
 
     QCoreApplication a(argc, argv);
     QString confFileName("devices.cfg");
-    if (!QFile::exists(confFileName))
-    {
-        cout <<  QString::fromUtf8("Ошибка конфигурационного файла ") <<  confFileName;
+    if (!QFile::exists(confFileName)){
+        cout <<  QString::fromUtf8("Конфигурационный файл отсутствует ") <<  confFileName;
         return 0;
     }
 
     QFile fileConf(confFileName);
-    if (!fileConf.open(QIODevice::ReadOnly | QIODevice::Text)){
+    if (!fileConf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         cout <<  QString::fromUtf8("Ошибка открытия конфигурационного файла ") <<  confFileName;
         return 0;
     }
@@ -82,34 +56,72 @@ int main(int argc, char *argv[])
         int pos = rx.indexIn(str);
         QStringList list = rx.capturedTexts();
         list.removeAll(QString(""));
-        if (list.size()>3){
-            name = list[1].trimmed();
-            if (!addr.setAddress(list[3].trimmed())) {
-                cout <<  QString::fromUtf8("Неверный IP ") << list[3];
-                continue;
+        if (list.size()<4)
+            continue;
+        name = list[1].trimmed();
+        if (!addr.setAddress(list[3].trimmed())) {
+            cout <<  QString::fromUtf8("Неверный IP ") << list[3];
+            continue;
+        }
+        int id = list[2].trimmed().toUInt();
+        CTcpDevice* ptrDev = searchDevByIP(addr);
+        if (name.startsWith("mic",Qt::CaseInsensitive)){
+            CMicTM* ptrMic = nullptr;
+            if (ptrDev){
+               ptrMic = static_cast<CMicTM*>(ptrDev);
+               if (ptrMic==nullptr){
+                   cout <<  QString::fromUtf8("Конфликт типов устройств");
+                   continue;
+               }
             }
-            int id = list[2].trimmed().toUInt();
-            CTcpDevice* ptrDev = searchDevByIP(addr);
-            if (name.startsWith("mic",Qt::CaseInsensitive)){
-                CMicTM* ptrMic = nullptr;
-                if (ptrDev){
-                    ptrMic = static_cast<CMicTM*>(ptrDev);
-                    if (ptrMic==nullptr){
-                        cout <<  QString::fromUtf8("Конфликт типов устройств");
-                        continue;
-                    }
-                }
-                if (!ptrMic)
-                    ptrMic = new CMicTM(addr);
-                ptrMic->addChannel(id, name);
+            if (!ptrMic){
+                ptrMic = new CMicTM(addr);
                 G_devices.push_back(ptrMic);
             }
+            ptrMic->addChannel(id, name);
+
         }
-        //cout << str;
+        else {
+            if (ptrDev){
+                cout <<  QString::fromUtf8("Устройство уже существует");
+                continue;
+            }
+            if ((name.startsWith("me-427",Qt::CaseInsensitive))||
+                 (name.startsWith("МЕ-427",Qt::CaseInsensitive))){//cyr
+                CME427* ptrME427 = new CME427(name, id, addr);
+                G_devices.push_back(ptrME427);
+            }
+            else if ((name.startsWith("me-725",Qt::CaseInsensitive))||
+                 (name.startsWith("МЕ-725",Qt::CaseInsensitive))){//cyr
+                CME725* ptrME725 = new CME725(name, id, addr);
+                G_devices.push_back(ptrME725);
+            }
+            else if ((name.startsWith("bsu",Qt::CaseInsensitive))||
+                 (name.startsWith("бсу",Qt::CaseInsensitive))){//cyr
+                CBSU* ptrBSU = new CBSU(name, id, addr);
+                G_devices.push_back(ptrBSU);
+            }
+            else if ((name.startsWith("me-719",Qt::CaseInsensitive))||
+                 (name.startsWith("МЕ-719",Qt::CaseInsensitive))){//cyr
+                CME719* ptrME719 = new CME719(name, id, addr);
+                G_devices.push_back(ptrME719);
+            }
+            else if ((name.startsWith("LVS",Qt::CaseInsensitive))||
+                 (name.startsWith("лвс",Qt::CaseInsensitive))){//cyr
+                CLVS* ptrLVS = new CLVS(name, id, addr);
+                G_devices.push_back(ptrLVS);
+            }
+            else if ((name.startsWith("rodos",Qt::CaseInsensitive))||
+                 (name.startsWith("родос",Qt::CaseInsensitive))){//cyr
+                CRodos* ptrRodos = new CRodos(name, id, addr);
+                G_devices.push_back(ptrRodos);
+            }
+        }
     }
-    //cout.flush();
     fileConf.close();
     cout.flush();
+
+    startListenAll();
 
     return a.exec();
 }
