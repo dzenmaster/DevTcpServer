@@ -19,4 +19,5 @@ SOURCES += main.cpp \
     TcpDevice.cpp
 
 HEADERS += \
-    TcpDevice.h
+    TcpDevice.h \
+    EnumsAndStructs.h

@@ -1,8 +1,14 @@
 #ifndef TCPDEVICE_H
 #define TCPDEVICE_H
+#include <QObject>
+#include <QTcpServer>
 
-class CTcpDevice
+
+class QTcpSocket;
+
+class CTcpDevice : public QObject
 {
+    Q_OBJECT
 
 public:
     CTcpDevice(const QString& name, unsigned int id, const QHostAddress& addr);
@@ -12,8 +18,14 @@ public:
 protected:
     QHostAddress m_hostAddr;
     QTcpServer  m_server;
+    QTcpSocket* m_socket;
     QString     m_name;
     unsigned int m_id;
+
+private slots:
+    void slNewConnection();
+    void slServerRead();
+    void slClientDisconnected();
 };
 
 
