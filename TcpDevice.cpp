@@ -5,7 +5,7 @@
 struct SettingsRec{
     char name[32];
     int size;
-    int type;//1-uChar 2-uInt32 3-uShort
+    int type;//1-uChar 2-uInt32 3-uShort 4-Int32
 };
 
 static QMap<CCSDSID,SettingsRec> GSRecs{
@@ -14,7 +14,13 @@ static QMap<CCSDSID,SettingsRec> GSRecs{
     { CCSDSID::INF, SettingsRec{"INF", 4,2}},
     { CCSDSID::FREQ, SettingsRec{"FREQ", 4,2}},
     { CCSDSID::NCIENTS, SettingsRec{"NClients", 1,1}},
-    { CCSDSID::COMCHANNELS, SettingsRec{"COM Channels", 1,1}}
+    { CCSDSID::COMCHANNELS, SettingsRec{"COM Channels", 1,1}},
+    { CCSDSID::KADRLENGTH, SettingsRec{"KadrLen", 4,2}},
+    { CCSDSID::POWER, SettingsRec{"Power", 4,4}},
+    { CCSDSID::FREQSHIFT, SettingsRec{"FreqShift", 4,4}},
+    { CCSDSID::INVERSION, SettingsRec{"Inversion", 1,1}},
+    { CCSDSID::DIFFER, SettingsRec{"Diff", 1,1}},
+    { CCSDSID::CODE01, SettingsRec{"Code0-1", 1,1}}
 };
 
 unsigned short crc16(const unsigned char *pcBlock, unsigned len )
@@ -96,6 +102,11 @@ void CTcpDevice::slServerRead()
                 printf("%s %d\n",GSRecs[id].name,
                        (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
                       +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4]))
+                        );
+            else if (GSRecs[id].type==4)
+                printf("%s %d\n",GSRecs[id].name,
+                      (int)( (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
+                      +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4])))
                         );
             pos += (GSRecs[id].size + 1);
 

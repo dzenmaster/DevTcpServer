@@ -26,7 +26,13 @@ enum CCSDSID {
     INF,
     FREQ,
     NCIENTS,
-    COMCHANNELS
+    COMCHANNELS,
+    KADRLENGTH,
+    POWER,
+    FREQSHIFT,
+    INVERSION,
+    DIFFER,
+    CODE01
 } ;
 
 #endif 
