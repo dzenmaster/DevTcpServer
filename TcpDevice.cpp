@@ -74,15 +74,21 @@ void CTcpDevice::slServerRead()
         bool crcCorrect = crc16(cd, sz-2);
         printf("got %d bytes, crc %s\n", sz, gotCrc==tCrc?"correct":"incorrect");
         int dataSz = (cd[4]&0x3F)*256+cd[5];
+        int procID = (cd[0]&7)*256+cd[1];
         printf("packet type=%d second header=%d id=%d n=%d dataSz=%d\n",
-               (cd[0]>>4)&1,(cd[0]>>3)&1,(cd[0]&7)*256+cd[1],(cd[2]&0x3F)*256+cd[3], dataSz   );
+               (cd[0]>>4)&1,(cd[0]>>3)&1,procID,(cd[2]&0x3F)*256+cd[3], dataSz   );
         if (dataSz+6!=sz){
             printf("incorrect sz=%d, zsData=%d\n", sz, dataSz);
             return;
         }
-
-        bool res = processControlPacket(&cd[6], dataSz - 2);
-        printf("Content of control packet is %s", res ? "correct" : "incorrect" );
+        if (procID==4){
+            bool res = processControlPacket(&cd[6], dataSz - 2);
+            printf("Content of control packet is %s", res ? "correct" : "incorrect" );
+        }
+        else if (procID==5){
+            bool res = sendState();
+            printf("State was sended res=%d", res );
+        }
     }
 }
 
@@ -218,6 +224,11 @@ bool CME427::processControlPacket(const unsigned char* cd, int sz)
         sect->setValue(QString("ch%1").arg(i), QString::number(m_matrix[i]) );
     }
     g_conf.flush(AutoSaveFile);
+    return true;
+}
+
+bool CME427::sendState()
+{
     return true;
 }
 

@@ -27,6 +27,7 @@ protected:
     unsigned int m_id;
     QSet<CCSDSID> m_allowIDs;
     virtual bool processControlPacket(const unsigned char* cd, int sz)=0;
+    virtual bool sendState() { return true; };
 
 private slots:
     void slNewConnection();
@@ -55,6 +56,7 @@ public:
 
 protected:
     bool processControlPacket(const unsigned char* cd, int sz);
+    bool sendState();
 
 private:
     int m_size;
