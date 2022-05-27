@@ -4,8 +4,11 @@
 #include <QTextCodec>
 #include <QRegExp>
 #include "TcpDevice.h"
+#include "ini/FastIni.h"
 
 QVector<CTcpDevice*> G_devices;
+CIniFile g_conf;
+
 
 CTcpDevice* searchDevByIP(const QHostAddress& addr)
 {
@@ -30,6 +33,12 @@ void startListenAll()
 
 int main(int argc, char *argv[])
 {   
+
+    if (!g_conf.open(AutoSaveFile)){
+        g_conf.flush(AutoSaveFile);//create
+    }
+
+
     QTextStream cout(stdout);
     cout.setCodec("CP866");
 
@@ -63,7 +72,7 @@ int main(int argc, char *argv[])
             cout <<  QString::fromUtf8("Неверный IP ") << list[3];
             continue;
         }
-        int id = list[2].trimmed().toUInt();
+        int id = list[2].trimmed().toUInt(Q_NULLPTR,16);
         CTcpDevice* ptrDev = searchDevByIP(addr);
         if (name.startsWith("mic",Qt::CaseInsensitive)){
             CMicTM* ptrMic = nullptr;

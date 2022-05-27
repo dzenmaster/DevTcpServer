@@ -1,14 +1,18 @@
 #include <QTcpSocket>
+#include <QSettings>
 #include "TcpDevice.h"
-#include "EnumsAndStructs.h"
+#include "ini/FastIni.h"
+
+extern CIniFile g_conf;
+
 
 struct SettingsRec{
     char name[32];
     int size;
-    int type;//1-uChar 2-uInt32 3-uShort 4-Int32
+    int type; // 1-uChar 2-uInt32 3-uShort 4-Int32
 };
 
-static QMap<CCSDSID,SettingsRec> GSRecs{
+static QMap<CCSDSID,SettingsRec> GSRecs{    
     { CCSDSID::CHANNUM, SettingsRec{"Channel", 1,1}},
     { CCSDSID::BRTS, SettingsRec{"BRTS", 1,1}},
     { CCSDSID::INF, SettingsRec{"INF", 4,2}},
@@ -45,21 +49,18 @@ CTcpDevice::CTcpDevice(const QString& name, unsigned int id, const QHostAddress&
 
 void CTcpDevice::slNewConnection()
 {
-    m_socket = m_server.nextPendingConnection();
-
- //printf("Hello, World!!! I am echo server!\r\n");
+    m_socket = m_server.nextPendingConnection(); 
 
     connect(m_socket, SIGNAL(readyRead()),SLOT(slServerRead()));
     connect(m_socket, SIGNAL(disconnected()), SLOT(slClientDisconnected()));
 }
 
 void CTcpDevice::slServerRead()
-{
-  //   printf("RR\n");
+{  
     while(m_socket->bytesAvailable()>0)
     {
         QByteArray array = m_socket->readAll();
-        printf("\n");
+        printf("\n\n");
         printf("IP %s : ", m_hostAddr.toString().toLocal8Bit().data());
         //printf(array.data());
         int sz = array.size();
@@ -72,47 +73,16 @@ void CTcpDevice::slServerRead()
         unsigned short gotCrc = cd[sz-2]*256 + cd[sz-1];
         bool crcCorrect = crc16(cd, sz-2);
         printf("got %d bytes, crc %s\n", sz, gotCrc==tCrc?"correct":"incorrect");
+        int dataSz = (cd[4]&0x3F)*256+cd[5];
         printf("packet type=%d second header=%d id=%d n=%d dataSz=%d\n",
-               (cd[0]>>4)&1,(cd[0]>>3)&1,(cd[0]&7)*256+cd[1],(cd[2]&0x3F)*256+cd[3],(cd[4]&0x3F)*256+cd[5]   );
-        int pos = 6;
-        while(pos<sz-2){
-            CCSDSID id=(CCSDSID)cd[pos];
-            if (!GSRecs.contains(id)){
-                printf("unknown key %d\n", cd[pos]);
-                break;
-            }
-            if (GSRecs[id].type==1){
-                int val = cd[pos+1];
-                printf("%s %d\n",GSRecs[id].name, val);
-                if (id==CCSDSID::NCIENTS){
-                    for ( int i = 0; i < val; ++i){
-                       printf("ip=%d.%d.%d.%d : %d\n",cd[pos+2],cd[pos+3],cd[pos+4],cd[pos+5], cd[pos+6]*256+cd[pos+7]);
-                       pos+=6;
-                    }
-
-                }
-                if (id==CCSDSID::COMCHANNELS){
-                    for ( int i = 0; i < val; ++i){
-                       printf("in = %d -> out = %d\n",cd[pos+2+i]+1,i+1);
-                    }
-                    break;
-                }
-            }
-            else if (GSRecs[id].type==2)
-                printf("%s %d\n",GSRecs[id].name,
-                       (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
-                      +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4]))
-                        );
-            else if (GSRecs[id].type==4)
-                printf("%s %d\n",GSRecs[id].name,
-                      (int)( (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
-                      +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4])))
-                        );
-            pos += (GSRecs[id].size + 1);
-
+               (cd[0]>>4)&1,(cd[0]>>3)&1,(cd[0]&7)*256+cd[1],(cd[2]&0x3F)*256+cd[3], dataSz   );
+        if (dataSz+6!=sz){
+            printf("incorrect sz=%d, zsData=%d\n", sz, dataSz);
+            return;
         }
 
-        //mTcpSocket->write(array);
+        bool res = processControlPacket(&cd[6], dataSz - 2);
+        printf("Content of control packet is %s", res ? "correct" : "incorrect" );
     }
 }
 
@@ -143,16 +113,113 @@ bool CTcpDevice::startListen()
 
 CMicTM::CMicTM(const QHostAddress& addr)
 : CTcpDevice("", 0, addr)
-{}
+{
+    m_allowIDs << CHANNUM << BRTS << INF << FREQ << NCIENTS << KADRLENGTH;
+    m_currChannel = 0;
+}
 
 void CMicTM::addChannel(unsigned int id, QString name)
 {
     m_name += name + " ";
 }
 
+bool CMicTM::processControlPacket(const unsigned char* cd, int sz)
+{
+    int pos = 0;
+    while(pos < sz) {
+        CCSDSID id=(CCSDSID)cd[pos];
+        if (!m_allowIDs.contains(id)){
+            printf("unknown key %d\n", cd[pos]);
+            return false;
+        }
+        if (GSRecs[id].type==1){
+            int val = cd[pos+1];
+            printf("%s %d\n",GSRecs[id].name, val);
+            if (id==CHANNUM)
+                m_currChannel = val;
+            if (id==NCIENTS){
+                for ( int i = 0; i < val; ++i){
+                   printf("ip=%d.%d.%d.%d : %d\n",cd[pos+2],cd[pos+3],cd[pos+4],cd[pos+5], cd[pos+6]*256+cd[pos+7]);
+                   pos+=6;
+                }
+            }
+        }
+        else if (GSRecs[id].type==2)
+            printf("%s %d\n",GSRecs[id].name,
+                   (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
+                  +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4]))
+                    );
+        else if (GSRecs[id].type==4)
+            printf("%s %d\n",GSRecs[id].name,
+                  (int)( (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
+                  +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4])))
+                    );
+        pos += (GSRecs[id].size + 1);
+    }
+
+    return true;
+}
+
 CME427::CME427(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
-{}
+{
+     m_allowIDs <<  COMCHANNELS;
+     m_size = 8;
+     memset(m_matrix,0, 4*64);
+
+     CIniFileSection* sect = g_conf.getSection(QString::number(m_id), false);
+     if (sect){
+         int tSz = sect->getInt("size",-1);
+         if (tSz!=-1){
+             m_size = tSz;
+             for (int i=0;i<m_size;++i)
+                 m_matrix[i] = sect->getInt(QString("ch%1").arg(i), -1);
+         }
+     }
+}
+
+bool CME427::processControlPacket(const unsigned char* cd, int sz)
+{
+    int pos = 0;
+    bool matrixDataExists=false;
+    while(pos < sz) {
+        CCSDSID id=(CCSDSID)cd[pos];
+        if (!m_allowIDs.contains(id)){
+            printf("unknown key %d\n", cd[pos]);
+            return false;
+        }
+        if (GSRecs[id].type==1){
+            int val = cd[pos+1];
+            printf("%s %d\n",GSRecs[id].name, val);
+            if (id==CCSDSID::COMCHANNELS){
+                if ((val>64)||(val<1)){
+                    printf("incorrect matrix size %d\n", val);
+                    return false;
+                }
+                m_size = val;
+                for ( int i = 0; i < val; ++i){
+                   m_matrix[i]= cd[pos+2+i];
+                   printf("in = %d -> out = %d\n",m_matrix[i]+1,i+1);
+                }
+                matrixDataExists=true;
+                break;
+            }
+        }
+        pos += (GSRecs[id].size + 1);
+    }
+    if (!matrixDataExists){
+        printf("matrix data is not exist\n");
+        return false;
+    }
+    //autosave to cfg
+    CIniFileSection* sect = g_conf.getSection(QString::number(m_id), true);
+    sect->setValue("size", QString::number(m_size) );
+    for(int i=0;i<m_size;++i){
+        sect->setValue(QString("ch%1").arg(i), QString::number(m_matrix[i]) );
+    }
+    g_conf.flush(AutoSaveFile);
+    return true;
+}
 
 CME725::CME725(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
@@ -164,7 +231,38 @@ CBSU::CBSU(const QString& name, unsigned int id, const QHostAddress& addr)
 
 CME719::CME719(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
-{}
+{
+    m_allowIDs << BRTS << INF << FREQ << KADRLENGTH << POWER << FREQSHIFT << INVERSION << DIFFER << CODE01;
+}
+
+bool CME719::processControlPacket(const unsigned char* cd, int sz)
+{
+    int pos = 0;
+    while(pos < sz) {
+        CCSDSID id=(CCSDSID)cd[pos];
+        if (!m_allowIDs.contains(id)) {
+            printf("unknown key %d\n", cd[pos]);
+            return false;
+        }
+        if (GSRecs[id].type==1) {
+            int val = cd[pos+1];
+            printf("%s %d\n",GSRecs[id].name, val);
+        }
+        else if (GSRecs[id].type==2)
+            printf("%s %d\n",GSRecs[id].name,
+                   (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
+                  +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4]))
+                    );
+        else if (GSRecs[id].type==4)
+            printf("%s %d\n",GSRecs[id].name,
+                  (int)( (((unsigned int)cd[pos+1])<<24) + (((unsigned int)cd[pos+2])<<16)
+                  +(((unsigned int)cd[pos+3])<<8) + (((unsigned int)cd[pos+4])))
+                    );
+        pos += (GSRecs[id].size + 1);
+    }
+
+    return true;
+}
 
 CLVS::CLVS(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
