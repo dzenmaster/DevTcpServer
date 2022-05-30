@@ -61,7 +61,9 @@ void CTcpDevice::slServerRead()
     {
         QByteArray array = m_socket->readAll();
         printf("\n\n");
+        printf("from IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
         printf("IP %s : ", m_hostAddr.toString().toLocal8Bit().data());
+
         //printf(array.data());
         int sz = array.size();
         if (sz<3){
@@ -229,6 +231,11 @@ bool CME427::processControlPacket(const unsigned char* cd, int sz)
 
 bool CME427::sendState()
 {
+    if (m_socket){
+        char chrTest[]="123";
+        m_socket->write(chrTest,3);
+        printf("answer is sended\n");
+    }
     return true;
 }
 
