@@ -26,8 +26,14 @@ protected:
     QString     m_name;
     unsigned int m_id;
     QSet<CCSDSID> m_allowIDs;
+    unsigned char   m_ccsdsBody[1600];
+    int             m_ccsdsSize;
+    int             m_ccsdsCounter;
+
     virtual bool processControlPacket(const unsigned char* cd, int sz)=0;
     virtual bool sendState() { return true; };
+    void makeCcsdsHeader(int bodySize, unsigned short procId=4);
+    void makeCcsdsState(){};
 
 private slots:
     void slNewConnection();
@@ -54,9 +60,10 @@ class CME427 : public CTcpDevice
 public:
     CME427(const QString& name, unsigned int id, const QHostAddress& addr);
 
-protected:
+protected:    
     bool processControlPacket(const unsigned char* cd, int sz);
     bool sendState();
+    void makeCcsdsState();
 
 private:
     int m_size;

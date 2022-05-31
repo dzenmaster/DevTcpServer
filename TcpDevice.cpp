@@ -44,7 +44,11 @@ unsigned short crc16(const unsigned char *pcBlock, unsigned len )
 }
 
 CTcpDevice::CTcpDevice(const QString& name, unsigned int id, const QHostAddress& addr)
-: m_name(name), m_id(id), m_hostAddr(addr)
+: m_name(name),
+  m_id(id),
+  m_hostAddr(addr),
+  m_ccsdsSize(0),
+  m_ccsdsCounter(0)
 {
      connect(&m_server, SIGNAL(newConnection()), SLOT(slNewConnection()));
 }
@@ -53,7 +57,7 @@ void CTcpDevice::slNewConnection()
 {
     G_mutex.lock();
     m_socket = m_server.nextPendingConnection(); 
-    printf("slNewConnection peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+    //printf("slNewConnection peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
     connect(m_socket, SIGNAL(readyRead()),SLOT(slServerRead()));
     connect(m_socket, SIGNAL(disconnected()), SLOT(slClientDisconnected()));
     G_mutex.unlock();
@@ -94,8 +98,8 @@ void CTcpDevice::slServerRead()
             printf("Content of control packet is %s", res ? "correct" : "incorrect" );
         }
         else if (procID==5){
-       //     bool res = sendState();
-       //     printf("State was sended res=%d", res );
+            bool res = sendState();
+            printf("State was sended res=%d", res );
         }
     }
     G_mutex.unlock();
@@ -104,7 +108,7 @@ void CTcpDevice::slServerRead()
 void CTcpDevice::slClientDisconnected()
 {
     G_mutex.lock();
-    printf("slClientDisconnected peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+    //printf("slClientDisconnected peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
     m_socket->disconnect();
     m_socket->close();
     G_mutex.unlock();
@@ -180,6 +184,27 @@ bool CMicTM::processControlPacket(const unsigned char* cd, int sz)
     return true;
 }
 
+void CTcpDevice::makeCcsdsHeader(int bodySize, unsigned short procId)
+{
+    //mainHeader
+    m_ccsdsBody[0] = 0;
+    m_ccsdsBody[1] = procId&0xFF;//conf device
+    m_ccsdsBody[2] = 0xC0 + ((m_ccsdsCounter>>8)&0x3F);
+    m_ccsdsBody[3] = (m_ccsdsCounter&0xFF);
+    unsigned short dataSz = bodySize+2;
+    m_ccsdsBody[4] = dataSz>>8;
+    m_ccsdsBody[5] = dataSz&0xFF;
+    //body
+    //already filled
+
+    //crc16
+    unsigned short rCrc = crc16( m_ccsdsBody, 6 + dataSz - 2 );
+    m_ccsdsBody[6 + dataSz - 2] = (rCrc>>8)&0xFF;
+    m_ccsdsBody[6 + dataSz - 1] = rCrc&0xFF;
+    m_ccsdsSize = 6 + dataSz;
+    ++m_ccsdsCounter;
+}
+
 CME427::CME427(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
 {
@@ -241,20 +266,33 @@ bool CME427::processControlPacket(const unsigned char* cd, int sz)
     return true;
 }
 
+void CME427::makeCcsdsState()
+{
+    unsigned short dataSz = 2 + m_size;
+    //body
+    m_ccsdsBody[6] = CCSDSID::COMCHANNELS;
+    m_ccsdsBody[7] = (m_size&0xFF);
+    for (int i = 0; i < m_size; ++i)
+        m_ccsdsBody[8+i] = m_matrix[i];
+    makeCcsdsHeader(dataSz);
+}
+
 bool CME427::sendState()
 {
 
     if (m_socket){        
-        printf("CME427::sendState peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
-        printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
-        char chrTest[]="123";
-        if (m_socket->waitForConnected(3000)) {
-           qint64 ssz = m_socket->write(chrTest,3);
-            if (m_socket->waitForBytesWritten(3000)){
-                printf("answer is sended %d\n",ssz);
-                printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
-            }
+        //printf("CME427::sendState peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+        //printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
+        //char chrTest[]="123";
+        //if (m_socket->waitForConnected(3000)) {
+          // qint64 ssz = m_socket->write(chrTest,3);
+        makeCcsdsState();
+        qint64 res =  m_socket->write((char*)m_ccsdsBody, m_ccsdsSize);
+        if (m_socket->waitForBytesWritten(3000)){
+            printf("answer is sended %d\n", res);
+            //printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
         }
+        //}
     }
     return true;
 }
