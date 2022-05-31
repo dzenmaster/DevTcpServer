@@ -1,10 +1,12 @@
 #include <QTcpSocket>
 #include <QSettings>
+#include <QMutex>
 #include "TcpDevice.h"
 #include "ini/FastIni.h"
 
 extern CIniFile g_conf;
 
+QMutex G_mutex;
 
 struct SettingsRec{
     char name[32];
@@ -49,19 +51,22 @@ CTcpDevice::CTcpDevice(const QString& name, unsigned int id, const QHostAddress&
 
 void CTcpDevice::slNewConnection()
 {
+    G_mutex.lock();
     m_socket = m_server.nextPendingConnection(); 
-
+    printf("slNewConnection peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
     connect(m_socket, SIGNAL(readyRead()),SLOT(slServerRead()));
     connect(m_socket, SIGNAL(disconnected()), SLOT(slClientDisconnected()));
+    G_mutex.unlock();
 }
 
 void CTcpDevice::slServerRead()
-{  
+{
+    G_mutex.lock();
     while(m_socket->bytesAvailable()>0)
     {
         QByteArray array = m_socket->readAll();
         printf("\n\n");
-        printf("from IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+        printf("from peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
         printf("IP %s : ", m_hostAddr.toString().toLocal8Bit().data());
 
         //printf(array.data());
@@ -81,6 +86,7 @@ void CTcpDevice::slServerRead()
                (cd[0]>>4)&1,(cd[0]>>3)&1,procID,(cd[2]&0x3F)*256+cd[3], dataSz   );
         if (dataSz+6!=sz){
             printf("incorrect sz=%d, zsData=%d\n", sz, dataSz);
+            G_mutex.unlock();
             return;
         }
         if (procID==4){
@@ -88,16 +94,20 @@ void CTcpDevice::slServerRead()
             printf("Content of control packet is %s", res ? "correct" : "incorrect" );
         }
         else if (procID==5){
-            bool res = sendState();
-            printf("State was sended res=%d", res );
+       //     bool res = sendState();
+       //     printf("State was sended res=%d", res );
         }
     }
+    G_mutex.unlock();
 }
 
 void CTcpDevice::slClientDisconnected()
 {
-    //printf("D\n");
+    G_mutex.lock();
+    printf("slClientDisconnected peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+    m_socket->disconnect();
     m_socket->close();
+    G_mutex.unlock();
 }
 const QHostAddress& CTcpDevice::getIP()
 {
@@ -106,6 +116,7 @@ const QHostAddress& CTcpDevice::getIP()
 
 bool CTcpDevice::startListen()
 {
+    G_mutex.lock();
     QTextStream cout(stdout);
     cout.setCodec("CP866");
     cout << "TCP Device " << m_name << " ";
@@ -116,7 +127,8 @@ bool CTcpDevice::startListen()
         printf("listen success %s\n", m_hostAddr.toString().toLocal8Bit().constData());
     else
         printf("listen bad %s\n", m_hostAddr.toString().toLocal8Bit().constData());
-    return res;
+    G_mutex.unlock();
+    return res;    
 }
 
 CMicTM::CMicTM(const QHostAddress& addr)
@@ -231,10 +243,18 @@ bool CME427::processControlPacket(const unsigned char* cd, int sz)
 
 bool CME427::sendState()
 {
-    if (m_socket){
+
+    if (m_socket){        
+        printf("CME427::sendState peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+        printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
         char chrTest[]="123";
-        m_socket->write(chrTest,3);
-        printf("answer is sended\n");
+        if (m_socket->waitForConnected(3000)) {
+           qint64 ssz = m_socket->write(chrTest,3);
+            if (m_socket->waitForBytesWritten(3000)){
+                printf("answer is sended %d\n",ssz);
+                printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
+            }
+        }
     }
     return true;
 }
