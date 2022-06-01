@@ -31,9 +31,9 @@ protected:
     int             m_ccsdsCounter;
 
     virtual bool processControlPacket(const unsigned char* cd, int sz)=0;
-    virtual bool sendState() { return true; };
+    bool sendState();
     void makeCcsdsHeader(int bodySize, unsigned short procId=4);
-    void makeCcsdsState(){};
+    virtual void makeCcsdsState(){};
 
 private slots:
     void slNewConnection();
@@ -61,8 +61,7 @@ public:
     CME427(const QString& name, unsigned int id, const QHostAddress& addr);
 
 protected:    
-    bool processControlPacket(const unsigned char* cd, int sz);
-    bool sendState();
+    bool processControlPacket(const unsigned char* cd, int sz);   
     void makeCcsdsState();
 
 private:
@@ -76,8 +75,14 @@ public:
     CME725(const QString& name, unsigned int id, const QHostAddress& addr);
 
 protected:
-    bool processControlPacket(const unsigned char* cd, int sz){return true;}
+    bool processControlPacket(const unsigned char* cd, int sz);
+    void makeCcsdsState();
+
+private:
+    int m_size;
+    int m_matrix[64];
 };
+
 
 class CBSU : public CTcpDevice
 {
@@ -95,6 +100,7 @@ public:
 
 protected:
     bool processControlPacket(const unsigned char* cd, int sz);
+    void makeCcsdsState();
 };
 
 class CLVS : public CTcpDevice

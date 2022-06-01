@@ -6,7 +6,7 @@
 
 extern CIniFile g_conf;
 
-QMutex G_mutex;
+//QMutex G_mutex;
 
 struct SettingsRec{
     char name[32];
@@ -55,17 +55,17 @@ CTcpDevice::CTcpDevice(const QString& name, unsigned int id, const QHostAddress&
 
 void CTcpDevice::slNewConnection()
 {
-    G_mutex.lock();
+ //   G_mutex.lock();
     m_socket = m_server.nextPendingConnection(); 
-    //printf("slNewConnection peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
+    printf("NewConnection IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
     connect(m_socket, SIGNAL(readyRead()),SLOT(slServerRead()));
     connect(m_socket, SIGNAL(disconnected()), SLOT(slClientDisconnected()));
-    G_mutex.unlock();
+ //   G_mutex.unlock();
 }
 
 void CTcpDevice::slServerRead()
 {
-    G_mutex.lock();
+   // G_mutex.lock();
     while(m_socket->bytesAvailable()>0)
     {
         QByteArray array = m_socket->readAll();
@@ -90,7 +90,7 @@ void CTcpDevice::slServerRead()
                (cd[0]>>4)&1,(cd[0]>>3)&1,procID,(cd[2]&0x3F)*256+cd[3], dataSz   );
         if (dataSz+6!=sz){
             printf("incorrect sz=%d, zsData=%d\n", sz, dataSz);
-            G_mutex.unlock();
+           // G_mutex.unlock();
             return;
         }
         if (procID==4){
@@ -102,16 +102,16 @@ void CTcpDevice::slServerRead()
             printf("State was sended res=%d", res );
         }
     }
-    G_mutex.unlock();
+  //  G_mutex.unlock();
 }
 
 void CTcpDevice::slClientDisconnected()
 {
-    G_mutex.lock();
+  //  G_mutex.lock();
     //printf("slClientDisconnected peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
     m_socket->disconnect();
     m_socket->close();
-    G_mutex.unlock();
+ //   G_mutex.unlock();
 }
 const QHostAddress& CTcpDevice::getIP()
 {
@@ -120,7 +120,7 @@ const QHostAddress& CTcpDevice::getIP()
 
 bool CTcpDevice::startListen()
 {
-    G_mutex.lock();
+  //  G_mutex.lock();
     QTextStream cout(stdout);
     cout.setCodec("CP866");
     cout << "TCP Device " << m_name << " ";
@@ -131,8 +131,21 @@ bool CTcpDevice::startListen()
         printf("listen success %s\n", m_hostAddr.toString().toLocal8Bit().constData());
     else
         printf("listen bad %s\n", m_hostAddr.toString().toLocal8Bit().constData());
-    G_mutex.unlock();
+ //   G_mutex.unlock();
     return res;    
+}
+
+bool CTcpDevice::sendState()
+{
+    if (m_socket){
+        makeCcsdsState();
+        qint64 res =  m_socket->write((char*)m_ccsdsBody, m_ccsdsSize);
+        if (m_socket->waitForBytesWritten(3000)){
+            printf("answer is sended %d\n", res);
+            //printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
+        }
+    }
+    return true;
 }
 
 CMicTM::CMicTM(const QHostAddress& addr)
@@ -277,29 +290,80 @@ void CME427::makeCcsdsState()
     makeCcsdsHeader(dataSz);
 }
 
-bool CME427::sendState()
-{
-
-    if (m_socket){        
-        //printf("CME427::sendState peer IP %s : %d\n", m_socket->peerAddress().toString().toLocal8Bit().data(), m_socket->peerPort());
-        //printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
-        //char chrTest[]="123";
-        //if (m_socket->waitForConnected(3000)) {
-          // qint64 ssz = m_socket->write(chrTest,3);
-        makeCcsdsState();
-        qint64 res =  m_socket->write((char*)m_ccsdsBody, m_ccsdsSize);
-        if (m_socket->waitForBytesWritten(3000)){
-            printf("answer is sended %d\n", res);
-            //printf("CME427::sendState IP %s : %d\n", m_socket->localAddress().toString().toLocal8Bit().data(), m_socket->localPort());
-        }
-        //}
-    }
-    return true;
-}
 
 CME725::CME725(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
-{}
+{
+    m_allowIDs <<  COMCHANNELS;
+    m_size = 8;
+    memset(m_matrix,0, 4*64);
+
+    CIniFileSection* sect = g_conf.getSection(QString::number(m_id), false);
+    if (sect){
+        int tSz = sect->getInt("size",-1);
+        if (tSz!=-1){
+            m_size = tSz;
+            for (int i=0;i<m_size;++i)
+                m_matrix[i] = sect->getInt(QString("ch%1").arg(i), -1);
+        }
+    }
+}
+
+
+bool CME725::processControlPacket(const unsigned char* cd, int sz)
+{
+    int pos = 0;
+    bool matrixDataExists=false;
+    while(pos < sz) {
+        CCSDSID id=(CCSDSID)cd[pos];
+        if (!m_allowIDs.contains(id)){
+            printf("unknown key %d\n", cd[pos]);
+            return false;
+        }
+        if (GSRecs[id].type==1){
+            int val = cd[pos+1];
+            printf("%s %d\n",GSRecs[id].name, val);
+            if (id==CCSDSID::COMCHANNELS){
+                if ((val>64)||(val<1)){
+                    printf("incorrect matrix size %d\n", val);
+                    return false;
+                }
+                m_size = val;
+                for ( int i = 0; i < val; ++i){
+                   m_matrix[i]= cd[pos+2+i];
+                   printf("in = %d -> out = %d\n",m_matrix[i]+1,i+1);
+                }
+                matrixDataExists=true;
+                break;
+            }
+        }
+        pos += (GSRecs[id].size + 1);
+    }
+    if (!matrixDataExists){
+        printf("matrix data is not exist\n");
+        return false;
+    }
+    //autosave to cfg
+    CIniFileSection* sect = g_conf.getSection(QString::number(m_id), true);
+    sect->setValue("size", QString::number(m_size) );
+    for(int i=0;i<m_size;++i){
+        sect->setValue(QString("ch%1").arg(i), QString::number(m_matrix[i]) );
+    }
+    g_conf.flush(AutoSaveFile);
+    return true;
+}
+
+void CME725::makeCcsdsState()
+{
+    unsigned short dataSz = 2 + m_size;
+    //body
+    m_ccsdsBody[6] = CCSDSID::COMCHANNELS;
+    m_ccsdsBody[7] = (m_size&0xFF);
+    for (int i = 0; i < m_size; ++i)
+        m_ccsdsBody[8+i] = m_matrix[i];
+    makeCcsdsHeader(dataSz);
+}
+
 
 CBSU::CBSU(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
@@ -339,6 +403,44 @@ bool CME719::processControlPacket(const unsigned char* cd, int sz)
 
     return true;
 }
+
+void CME719::makeCcsdsState()
+{
+    unsigned short dataSz = 28;
+    //body
+ /*   m_ccsdsBody[6] = CCSDSID::BRTS;
+    m_ccsdsBody[7] = (brts&0xFF);
+    m_ccsdsBody[8] = CCSDSID::INF;
+    m_ccsdsBody[9] = ((inf>>24)&0xFF);
+    m_ccsdsBody[10] = ((inf>>16)&0xFF);
+    m_ccsdsBody[11] = ((inf>>8)&0xFF);
+    m_ccsdsBody[12] = (inf&0xFF);
+    m_ccsdsBody[13] = CCSDSID::FREQ;
+    m_ccsdsBody[14] = ((freq>>24)&0xFF);
+    m_ccsdsBody[15] = ((freq>>16)&0xFF);
+    m_ccsdsBody[16] = ((freq>>8)&0xFF);
+    m_ccsdsBody[17] = (freq&0xFF);
+    m_ccsdsBody[18] = CCSDSID::POWER;
+    m_ccsdsBody[19] = ((pow>>24)&0xFF);
+    m_ccsdsBody[20] = ((pow>>16)&0xFF);
+    m_ccsdsBody[21] = ((pow>>8)&0xFF);
+    m_ccsdsBody[22] = (pow&0xFF);
+    m_ccsdsBody[23] = CCSDSID::FREQSHIFT;
+    m_ccsdsBody[24] = ((freqShift>>24)&0xFF);
+    m_ccsdsBody[25] = ((freqShift>>16)&0xFF);
+    m_ccsdsBody[26] = ((freqShift>>8)&0xFF);
+    m_ccsdsBody[27] = (freqShift&0xFF);
+    m_ccsdsBody[28] = CCSDSID::INVERSION;
+    m_ccsdsBody[29] = inv ? 1 : 0;
+    m_ccsdsBody[30] = CCSDSID::DEFFER;
+    m_ccsdsBody[31] = diff ? 1 : 0;
+    m_ccsdsBody[32] = CCSDSID::CODE01;
+    m_ccsdsBody[33] = code01 ? 1 : 0;*/
+
+    makeCcsdsHeader(dataSz);
+}
+
+
 
 CLVS::CLVS(const QString& name, unsigned int id, const QHostAddress& addr)
 : CTcpDevice(name, id, addr)
