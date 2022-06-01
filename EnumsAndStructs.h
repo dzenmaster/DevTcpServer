@@ -25,7 +25,7 @@ enum CCSDSID {
     BRTS,
     INF,
     FREQ,
-    NCIENTS,
+    NCLIENTS,
     COMCHANNELS,
     KADRLENGTH,
     POWER,

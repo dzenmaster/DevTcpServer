@@ -19,7 +19,7 @@ static QMap<CCSDSID,SettingsRec> GSRecs{
     { CCSDSID::BRTS, SettingsRec{"BRTS", 1,1}},
     { CCSDSID::INF, SettingsRec{"INF", 4,2}},
     { CCSDSID::FREQ, SettingsRec{"FREQ", 4,2}},
-    { CCSDSID::NCIENTS, SettingsRec{"NClients", 1,1}},
+    { CCSDSID::NCLIENTS, SettingsRec{"NClients", 1,1}},
     { CCSDSID::COMCHANNELS, SettingsRec{"COM Channels", 1,1}},
     { CCSDSID::KADRLENGTH, SettingsRec{"KadrLen", 4,2}},
     { CCSDSID::POWER, SettingsRec{"Power", 4,4}},
@@ -138,7 +138,7 @@ bool CTcpDevice::startListen()
 CMicTM::CMicTM(const QHostAddress& addr)
 : CTcpDevice("", 0, addr)
 {
-    m_allowIDs << CHANNUM << BRTS << INF << FREQ << NCIENTS << KADRLENGTH;
+    m_allowIDs << CHANNUM << BRTS << INF << FREQ << NCLIENTS << KADRLENGTH;
     m_currChannel = 0;
 }
 
@@ -161,7 +161,7 @@ bool CMicTM::processControlPacket(const unsigned char* cd, int sz)
             printf("%s %d\n",GSRecs[id].name, val);
             if (id==CHANNUM)
                 m_currChannel = val;
-            if (id==NCIENTS){
+            if (id==NCLIENTS){
                 for ( int i = 0; i < val; ++i){
                    printf("ip=%d.%d.%d.%d : %d\n",cd[pos+2],cd[pos+3],cd[pos+4],cd[pos+5], cd[pos+6]*256+cd[pos+7]);
                    pos+=6;
