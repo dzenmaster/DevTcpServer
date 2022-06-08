@@ -4,6 +4,10 @@
 #include <QTextCodec>
 #include <QRegExp>
 #include "TcpDevice.h"
+#include "tcpdevme427.h"
+#include "tcpdevme719.h"
+#include "tcpdevme725.h"
+#include "tcpdevmictm.h"
 #include "ini/FastIni.h"
 
 QVector<CTcpDevice*> G_devices;

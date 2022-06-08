@@ -8,6 +8,12 @@
 
 class QTcpSocket;
 
+struct SettingsRec{
+    char name[32];
+    int size;
+    int type; // 1-uChar 2-uInt32 3-uShort 4-Int32
+};
+
 class CTcpDevice : public QObject
 {
     Q_OBJECT
@@ -42,55 +48,6 @@ private slots:
 };
 
 
-class CMicTM : public CTcpDevice
-{
-public:
-    CMicTM(const QHostAddress& addr);
-    void addChannel(unsigned int id, QString name);
-
-protected:
-    bool processControlPacket(const unsigned char* cd, int sz);
-    void makeCcsdsState(int ch=0);
-
-private:
-    int m_currChannel;
-    unsigned int m_IDs[2];
-    int m_brts[2];
-    int m_inf[2];
-    int m_kadrLen[2];
-    unsigned int m_freq[2];
-    QVector<QPair<QString,unsigned short>> m_clients[2];
-};
-
-class CME427 : public CTcpDevice
-{
-public:
-    CME427(const QString& name, unsigned int id, const QHostAddress& addr);
-
-protected:    
-    bool processControlPacket(const unsigned char* cd, int sz);   
-    void makeCcsdsState(int ch=0);
-
-private:
-    int m_size;
-    int m_matrix[64];
-};
-
-class CME725 : public CTcpDevice
-{
-public:
-    CME725(const QString& name, unsigned int id, const QHostAddress& addr);
-
-protected:
-    bool processControlPacket(const unsigned char* cd, int sz);
-    void makeCcsdsState(int ch=0);
-
-private:
-    int m_size;
-    int m_matrix[64];
-};
-
-
 class CBSU : public CTcpDevice
 {
 public:
@@ -100,26 +57,6 @@ protected:
     bool processControlPacket(const unsigned char* cd, int sz){return true;}
 };
 
-class CME719 : public CTcpDevice
-{
-public:
-    CME719(const QString& name, unsigned int id, const QHostAddress& addr);
-
-protected:
-    bool processControlPacket(const unsigned char* cd, int sz);
-    void makeCcsdsState(int ch=0);
-
-private:
-    unsigned char m_brts;
-    unsigned char m_inv;
-    unsigned char m_diff;
-    unsigned char m_code01;
-    unsigned int m_inf;
-    unsigned int m_kadrLen;
-    unsigned int m_freq;
-    int m_power;
-    int m_freqShift;
-};
 
 class CLVS : public CTcpDevice
 {

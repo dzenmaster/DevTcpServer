@@ -17,9 +17,17 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += main.cpp \
     TcpDevice.cpp \
-    ini/FastIni.cpp
+    ini/FastIni.cpp \
+    tcpdevme427.cpp \
+    tcpdevme719.cpp \
+    tcpdevme725.cpp \
+    tcpdevmictm.cpp
 
 HEADERS += \
     TcpDevice.h \
     EnumsAndStructs.h \
-    ini/FastIni.h
+    ini/FastIni.h \
+    tcpdevme427.h \
+    tcpdevme719.h \
+    tcpdevme725.h \
+    tcpdevmictm.h
